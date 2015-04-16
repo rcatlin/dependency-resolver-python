@@ -215,7 +215,7 @@ class Resolver(object):
         """ Check individual argument (list/tuple/string/etc) """
         if isinstance(arg, list):
             return self._get_dependencies_from_args(arg)
-        elif isinstance(arg, tuple):
+        elif isinstance(arg, dict):
             return self._get_dependencies_from_kwargs(arg)
 
         if not is_dependency_name(arg):
