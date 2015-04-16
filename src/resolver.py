@@ -1,100 +1,212 @@
 """ Resolver module """
+from services import ServiceFactory
+from tree import DependencyNode
+from tree import DependencyTree
 
-
-class CircularDependencyError(Exception):
+class CircularDependencyException(Exception):
     """ Raised when a circular dependency graph is detected """
     def __init__(self, nodes, *args):
-        path = nodes.join('->')
-        self.message = "Circular Depedency Detected: %s" % path
+        self.node_path = '->'.join(nodes)
+        self.message = "Circular Depedency Detected: %s" % self.node_path
+
+
+def detect_circle(nodes):
+    """ Wrapper for recursive _detect_circle function """
+    # Verify nodes and traveled types
+    if not isinstance(nodes, dict):
+        raise TypeError('"nodes" must be a dictionary')
+
+    dependencies = set(nodes.keys())
+    levels = {}
+    traveled = []
+
+    heads = _detect_circle(nodes, dependencies, traveled)
+
+    return DependencyTree(heads)
+
+
+def _detect_circle(nodes={}, dependencies=set(), traveled=[], path=[]):
+    """
+        Recursively iterate over nodes checking
+        if we've traveled to that node before.
+    """
+    # Verify nodes and traveled types
+    if not isinstance(nodes, dict):
+        raise TypeError('"nodes" must be a dictionary')
+    if not isinstance(dependencies, set):
+        raise TypeError('"dependencies" must be a set')
+    if not isinstance(traveled, list):
+        raise TypeError('"traveled" must be a list')
+
+    if not dependencies:
+        # We're at the end of a dependency path.
+        return []
+
+    # Recursively iterate over nodes,
+    # and gather dependency children nodes.
+    children = []
+    for name in dependencies:
+        # Path is used for circular dependency exceptions
+        # to display to the user the circular path.
+        new_path = list(path)
+        new_path.append(name)
+
+        # Check if we've traveled to this node before.
+        if name in traveled:
+            raise CircularDependencyException(new_path)
+
+        # Make recursive call
+        node_children = _detect_circle(nodes=nodes,
+                                       dependencies=nodes[name],
+                                       traveled=traveled + list(name),
+                                       path=new_path)
+
+        # Create node for this dependency with children.
+        node = DependencyNode(name)
+        for child in node_children:
+            child.parent = node
+            node.add_child(child)
+        children.append(node)
+
+    return children
+
+
+def solve(nodes):
+    """ Solve graph into Solution """
+    # Verify nodes type
+    if not isinstance(nodes, dict):
+        raise TypeError('"nodes" must be a dictionary')
+
+    # Check for circular dependencies
+    return detect_circle(nodes)
+
+
+def is_dependency_name(name):
+        """ Returns true if of the form "@some_string" """
+        if not isinstance(name, str):
+            return False
+        return name[0:1] == '@'
 
 
 class Resolver(object):
-    """ Resolves graph """
+    """ Resolves dependency node graph and instantiates services """
+    def __init__(self, config, scalars={}):
+        """ Initialize Resolver """
+        self._nodes = {}
+        self._config = config
+        self._factory = ServiceFactory(scalars)
+        self._init_nodes(config)
 
-    def solve(self, nodes):
-        """ Solve graph into Solution """
-        # Verify nodes type
-        if not isinstance(nodes, dict):
-            raise TypeError('"nodes" must be a dictionary')
+    @property
+    def nodes(self):
+        """ Return nodes """
+        return self._nodes
 
-        # Check for circular dependencies and get levels dictionary
-        initial_dependencies = tuple(nodes.keys)
-        levels = detect_circle_and_get_levels(nodes, initial_dependencies)
-
-        # Return Solution
-        return Solution(nodes, levels)
-
-    def detect_circle_and_get_levels(self, nodes=[], dependencies=(),
-                                     traveled=[], level=0, levels=[]):
-        """
-            Recursively iterate over nodes checking
-            if we've traveled to that node before.
-        """
-        # Verify nodes and traveled types
-        if not isinstance(nodes, dict):
-            raise TypeError('"nodes" must be a dictionary')
-        if not isinstance(traveled, dict):
-            raise TypeError('"traveled" must be a dictionary')
-
-        # We're done if dependencies is empty. We've traveled everywhere!
-        if not dependencies:
+    def do(self):
+        """ Instantiate Services """
+        if not self._nodes:
             return
+        # Let's retain original copy of _nodes
+        node_copy = dict(self._nodes)
 
-        # Recursively iterate over nodes
-        levels = []
-        for name in dependencies.iteritems():
-            if name in traveled:
-                raise CircularDependencyError(traveled + [name])
+        self._do(node_copy)
 
-            # Add name to levels
-            if level not in levels:
-                levels[level] = ()
-            levels[level].append()
+        return self._factory.get_instantiated_services()
 
-            # Add node name to traveled list
-            traveled.append(name)
-
-            # Make recursive call
-            self.detect_circle(nodes, dependencies, traveled,
-                               level + 1, levels)
-
-        return levels
-
-
-class Solution(object):
-    """ Resolver Solution for stepping through graph """
-    def __init__(self, nodes={}, levels=[]):
-        # Verify nodes and levels types
+    def _do(self, nodes):
+        """ Recursive method to instantiate services """
         if not isinstance(nodes, dict):
             raise TypeError('"nodes" must be a dictionary')
-        if not isinstance(levels, dict):
-            raise TypeError('"nodes" must be a dictionary')
 
-        self.nodes = nodes
-        self.levels = levels
-        self._num_levels = len(levels)
-        self._current_level = 0
+        if not nodes:
+            # we're done!
+            return
+        starting_num_nodes = len(nodes)
+        newly_instantiated = set()
 
-    def free(self):
-        """ Return free nodes at current level """
-        if self._current_level in levels:
-            return self.levels[self._current_level]
-        return ()
+        # Instantiate services with an empty dependency set
+        for (name, dependency_set) in nodes.iteritems():
+            if dependency_set:
+                # Skip non-empty dependency sets
+                continue
 
-    def forward(self):
-        """ Move up a level in the graph """
-        self._current_level += 1
+            # Instantiate
+            config = self._config[name]
+            service = self._factory.create_from_dict(config)
+            self._factory.add_instantiated_service(name, service)
 
-    def backward(self):
-        """ Move down a level in the graph """
-        self._current_level -= 1
+            newly_instantiated.add(name)
 
-    @property
-    def current_level(self):
-        """ Return current level """
-        return self._current_level
+        # We ALWAYS should have instantiated a new service
+        # or we'll end up in an infinite loop.
+        if not newly_instantiated:
+            raise Exception('No newly instantiated services')
 
-    @property
-    def num_levels(self):
-        """ Return number of levels """
-        return self._num_levels
+        # Remove from Nodes
+        for name in newly_instantiated:
+            del nodes[name]
+
+        # Check if the number of nodes have changed
+        # to prevent infinite loops.
+        # We should ALWAYS have removed a node.
+        if starting_num_nodes == len(nodes):
+            raise Exception('No nodes removed!')
+
+
+        # Remove newly instantiated services from dependency sets
+        for (name, dependency_set) in nodes.iteritems():
+            nodes[name] = dependency_set.difference(newly_instantiated)
+
+        # Recursion is recursion is ...
+        self._do(nodes)
+
+    def _init_nodes(self, config):
+        """ Gathers dependency sets onto _nodes """
+        if not isinstance(config, dict):
+            raise TypeError('"config" must be a dictionary')
+
+        for (name, conf) in config.iteritems():
+            args = [] if 'args' not in conf else conf['args']
+            kwargs = {} if 'kwargs' not in conf else conf['kwargs']
+
+            dependencies = set()
+            arg_deps = self._get_dependencies_from_args(args)
+            kwarg_deps = self._get_dependencies_from_kwargs(kwargs)
+
+            dependencies.update(arg_deps)
+            dependencies.update(kwarg_deps)
+
+            self._nodes[name] = dependencies
+
+    def _get_dependencies_from_args(self, args):
+        """ Parse arguments """
+        if not isinstance(args, list):
+            raise TypeError('"args" must be a list')
+
+        dependency_names = set()
+        for arg in args:
+            new_names = self._check_arg(arg)
+            dependency_names.update(new_names)
+        return dependency_names
+
+    def _get_dependencies_from_kwargs(self, args):
+        """ Parse keyed arguments """
+        if not isinstance(args, dict):
+            raise TypeError('"kwargs" must be a dictionary')
+
+        dependency_names = set()
+        for (key, arg) in args.iteritems():
+            new_names = self._check_arg(arg)
+            dependency_names.update(new_names)
+        return dependency_names
+
+    def _check_arg(self, arg):
+        """ Check individual argument (list/tuple/string/etc) """
+        if isinstance(arg, list):
+            return self._get_dependencies_from_args(arg)
+        elif isinstance(arg, tuple):
+            return self._get_dependencies_from_kwargs(arg)
+
+        if not is_dependency_name(arg):
+            return
+        return set([arg[1:]])

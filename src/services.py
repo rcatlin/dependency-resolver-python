@@ -58,6 +58,20 @@ class ServiceFactory(object):
         # Return
         return service_obj
 
+    def create_from_dict(self, dictionary):
+        """ Initializes an instance from a dictionary blueprint """
+        return self.create(
+            dictionary['module'],
+            dictionary['class'],
+            [] if 'args' not in dictionary else dictionary['args'],
+            {} if 'kwargs' not in dictionary else dictionary['kwargs'],
+            None if 'factory_method' not in dictionary else dictionary['factory_method'],
+            [] if 'factory_args' not in dictionary else dictionary['factory_args'],
+            {} if 'factory_kwargs' not in dictionary else dictionary['factory_kwargs'],
+            False if 'static' not in dictionary else dictionary['static'],
+            None if 'calls' not in dictionary else dictionary['calls']
+        )
+
     def add_instantiated_service(self, name, service):
         """ Add an instatiated service by name """
         self.instantiated_services[name] = service

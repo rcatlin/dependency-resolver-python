@@ -1,32 +1,55 @@
 """ Unit Tests for Resolver Module """
+import unittest
+import yaml
+
+from example_classes import Foo
+from example_classes import Bar
+from example_classes import Baz
+from example_classes import Qux
 from resolver import CircularDependencyException
+from resolver import detect_circle
+from resolver import _detect_circle
+from resolver import solve
+from resolver import is_dependency_name
 from resolver import Resolver
-from resolver import Solution
+from tree import DependencyNode
+from tree import DependencyTree
 
-class ResolverTest(unittest.TestCase):
-    """ Unit Tests for Resolver Class """
+def get_config_yaml():
+    return yaml.load(open('test/test_config.yaml', 'r')) or {}
 
-    def setUp(self):
-        """ Set it up """
-        self.resolver = Resolver()
+class DetectCircleTest(unittest.TestCase):
+    """ Unit Tests for detect_circle method """
 
     def test_detect_circle_raises_circular_exception(self):
         """
             Check that Circular Dependencies are
             detected and an exception is raised.
         """
-        with self.assertRaises(CircularDependencyException):
-            self.resolver.detect_circle({
-                'a': ('b'),
-                'b': ('a')
-            })
+        with self.assertRaises(CircularDependencyException) as cm:
+            graph = {
+                'a': set(['b']),
+                'b': set(['a'])
+            }
+            detect_circle(graph)
 
-        with self.assertRaise(CircularDependencyException):
-            self.resolver.detect_circle({
-                'a': ('b'),
-                'b': ('c'),
-                'c': ('a')
-            })
+        self.assertEquals(
+            cm.exception.node_path,
+            'a->b->a'
+        )
+
+        with self.assertRaises(CircularDependencyException) as cm:
+            graph = {
+                'a': set(['b']),
+                'b': set(['c']),
+                'c': set(['a'])
+            }
+            detect_circle(graph)
+
+        self.assertEquals(
+            cm.exception.node_path,
+            'a->b->c->a'
+        )
 
     def test_detect_circle_raises_type_exception(self):
         """
@@ -34,98 +57,143 @@ class ResolverTest(unittest.TestCase):
             detected and an exception is raised.
         """
         with self.assertRaises(TypeError):
-            self.resolver.detect_circle('not_a_dictionary')
+            _detect_circle('not_a_dictionary')
 
         with self.assertRaises(TypeError):
-            self.resolver.detect_circle(
+            _detect_circle(
                 {'a': ()},
-                'not_a_dictionary'
+                'not_a_tuple'
             )
 
-    def test_detect_circle_valid_graph(self):
+        with self.assertRaises(TypeError):
+            _detect_circle(
+                {'a': ()},
+                (),
+                'not_a_list'
+            )
+
+        with self.assertRaises(TypeError):
+            _detect_circle(
+                {'a': ()},
+                (),
+                [],
+                'not_an_integer'
+            )
+
+        with self.assertRaises(TypeError):
+            _detect_circle(
+                {'a': ()},
+                (),
+                [],
+                0,
+                'not_a_list'
+            )
+
+    def test_detect_circle_2(self):
+        graph = {
+            'a': set(['b']),
+            'b': set(['c', 'd']),
+            'c': set(['e']),
+            'd': set(['e']),
+            'e': set()
+        }
+        tree = detect_circle(graph)
+
+        assert isinstance(tree, DependencyTree)
+
+    def test_detect_circle(self):
         """
             Check that a Circular Dependency exception
             is not raised for a valid graph.
         """
-        assert not self.resolver.detect_circle({
-            'a': ('b'),
-            'b': (),
-            'c': ('d'),
-            'd': ('e'),
-            'e': (),
-            'f': 'a',
-            'g': ()
-        })
-
-    def test_solve():
-        """
-            Test the solving of a node graph and
-            forwarding through the solution.
-        """
-        graph  = {
-            'a': ('b', 'c'),
-            'b': (),
-            'c': ('b'),
-            'd': (),
-            'e': ('d')
+        graph = {
+            'a': set(['f', 'c']),
+            'b': set(),
+            'c': set(['b']),
+            'd': set(),
+            'e': set('d'),
+            'f': set(),
+            'g': set(['a'])
         }
 
         # Call Test Method
-        solution = self.resolver.solve(graph)
+        tree = detect_circle(graph)
+        assert isinstance(tree, DependencyTree)
+        print tree
+        self.assertEquals(7, tree.head_count)
+        self.assertEquals(
+            set(['d', 'a', 'c', 'b', 'e', 'g', 'f']),
+            tree.head_values
+        )
 
-        # Assertions
-        assert solution.current_level is 0
-        assert solution.num_levels is 3
 
-        # Free Nodes on Level 0
-        expected_0_free = set(['b', 'd'])
-        actual_0_free = solution.free()
-        assert not expected_0_free.difference(actual_0_free)
+class DependencyNameTest(unittest.TestCase):
+    def test_names(self):
+        assert is_dependency_name('@foo')
+        assert not is_dependency_name('foo')
 
-        # Move solution graph to level 1
-        solution.forward()
-        assert solution.current_level() is 1
 
-        # Free Nodes on Level 1
-        expected_1_free = set(['c', 'd'])
-        actual_1_free = solution.free()
-        assert not expected_1_free.difference(actual_1_free)
+class ResolverTest(unittest.TestCase):
+    def test_init_nodes(self):
+        config = {
+            'foo': {
+                'module': 'example_classes',
+                'class': 'Foo'
+            }
+        }
+        resolver = Resolver(config)
 
-        # Move solution graph to level 2
-        solution.forward()
-        assert solution.current_level is 2
+        nodes = resolver.nodes
+        self.assertEquals(nodes['foo'], set())
 
-        # Free Nodes on Level 2
-        expected_2_free = set(['a'])
-        actual_1_free = solution.free()
+    def test_init_nodes_with_a_dependency(self):
+        config = {
+            'foo': {
+                'module': 'example_classes',
+                'class': 'Foo'
+            },
+            'bar': {
+                'module': 'example_classes',
+                'class': 'Bar',
+                'args': ['@foo']
+            }
+        }
+        resolver = Resolver(config)
 
-        # Move solution graph to level 3
-        # Should be empty!
-        solution.forward()
-        assert solution.current_level is 3
-        assert not solution.free()
+        nodes = resolver.nodes
+        self.assertEquals(nodes['foo'], set())
+        self.assertEquals(nodes['bar'], set(['foo']))
 
-        # Move backward
-        solution.backward()
-        assert solution.current_level is 2
+    def test_init_nodes_complicated(self):
+        config = yaml.load(open('test/test_config.yml', 'r')) or {}
+        resolver = Resolver(config)
 
-        # Check Dependencies
-        expected_a_deps = set(['b', 'c'])
-        actual_a_deps = solution.get_dependencies('a')
-        assert not expected_a_deps.difference(actual_a_deps)
+        nodes = resolver.nodes
+        self.assertEquals(nodes['baz'], set())
+        self.assertEquals(nodes['foo'], set())
+        self.assertEquals(nodes['bar'], set(['foo']))
+        self.assertEquals(nodes['qux'], set(['foo', 'bar', 'baz']))
 
-        expected_b_deps = set()
-        actual_b_deps = solution.get_dependencies('b')
-        assert not expected_b_deps.difference(actual_b_deps)
+    def test_do_simple(self):
+        resolver = Resolver({
+            'foo': {
+                'module': 'example_classes',
+                'class': 'Foo'
+            }
+        })
 
-        expected_c_deps = set(['b'])
-        actual_c_deps = solution.get_dependencies('c')
-        assert not expected_c_deps.difference(actual_c_deps)
+        services = resolver.do()
 
-        expected_d_deps = set()
-        actual_d_deps = solution.get_dependencies('d')
-        assert not expected_d_deps.difference(actual_d_deps)
+        assert 'foo' in services
+        assert isinstance(services['foo'], Foo)
 
-        expected_e_deps = set(['d'])
-        actual_e_deps = solution.get_dependencies('e')
-        assert not expected_e_deps.difference(actual_e_deps)
+    def test_do_complicated(self):
+        config = yaml.load(open('test/test_config.yml', 'r')) or {}
+        resolver = Resolver(config)
+
+        services = resolver.do()
+
+        assert isinstance(services['foo'], Foo)
+        assert isinstance(services['bar'], Bar)
+        assert isinstance(services['baz'], Baz)
+        assert isinstance(services['qux'], Qux)
