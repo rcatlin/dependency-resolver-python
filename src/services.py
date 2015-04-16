@@ -22,25 +22,77 @@ def is_arg_service(arg):
     return arg[:1] == '@'
 
 
+def _check_type(name, obj, expected_type):
+    """ Raise a TypeError if object is not of expected type """
+    if not isinstance(obj, expected_type):
+        raise TypeError(
+            '"%s" must be an a %s' % (name, expected_type.__name__)
+        )
+
+
+def _import_module(module_name):
+    """ Imports the module dynamically """
+    fromlist = []
+    dot_position = module_name.rfind('.')
+    if dot_position > -1:
+        fromlist.append(
+            module_name[dot_position+1:len(module_name)]
+        )
+
+    # Import module
+    module = __import__(module_name, globals(), locals(), fromlist, -1)
+
+    return module
+
+
+def _verify_create_args(module_name, class_name, static):
+    """ Verifies a subset of the arguments to create() """
+    # Verify module name is provided
+    if module_name is None:
+        raise InvalidServiceConfiguration(
+            'Service configurations must define a module'
+        )
+
+    # Non-static services must define a class
+    if not static and class_name is None:
+        tmpl0 = 'Non-static service configurations must define a class: '
+        tmpl1 = 'module is %s'
+        raise InvalidServiceConfiguration((tmpl0 + tmpl1) % module_name)
+
+
 class ServiceFactory(object):
     """
         Class ServiceFactory handles the dynamic creation of service objects
     """
-    def __init__(self, scalars={}):
-        self.scalars = scalars
+    def __init__(self, scalars=None):
+        if scalars is None:
+            self.scalars = {}
+        else:
+            self.scalars = scalars
         self.instantiated_services = {}
 
-    # pylint: disable=eval-used, too-many-locals, too-many-arguments
+    # pylint: disable=too-many-locals, too-many-arguments
     def create(self, module_name, class_name,
-               args=[], kwargs={}, factory_method=None,
-               factory_args=[], factory_kwargs={}, static=False,
+               args=None, kwargs=None, factory_method=None,
+               factory_args=None, factory_kwargs=None, static=False,
                calls=None):
         """ Initializes an instance of the service """
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
+        if factory_args is None:
+            factory_args = []
+        if factory_kwargs is None:
+            factory_kwargs = {}
+        if static is None:
+            static = False
+
         # Verify
-        self._verify_args(module_name, class_name, static)
+        _verify_create_args(module_name, class_name, static)
 
         # Import
-        module = self._import_module(module_name)
+        module = _import_module(module_name)
 
         # Instantiate
         service_obj = self._instantiate(module, class_name,
@@ -60,16 +112,23 @@ class ServiceFactory(object):
 
     def create_from_dict(self, dictionary):
         """ Initializes an instance from a dictionary blueprint """
+        has_args = 'args' not in dictionary
+        has_kwargs = 'kwargs' not in dictionary
+        has_factory_method = 'factory_method' not in dictionary
+        has_factory_args = 'factory_args' not in dictionary
+        has_factory_kwargs = 'factory_kwargs' not in dictionary
+        has_static = 'static' not in dictionary
+        has_calls = 'calls' not in dictionary
         return self.create(
             dictionary['module'],
             dictionary['class'],
-            [] if 'args' not in dictionary else dictionary['args'],
-            {} if 'kwargs' not in dictionary else dictionary['kwargs'],
-            None if 'factory_method' not in dictionary else dictionary['factory_method'],
-            [] if 'factory_args' not in dictionary else dictionary['factory_args'],
-            {} if 'factory_kwargs' not in dictionary else dictionary['factory_kwargs'],
-            False if 'static' not in dictionary else dictionary['static'],
-            None if 'calls' not in dictionary else dictionary['calls']
+            [] if has_args else dictionary['args'],
+            {} if has_kwargs else dictionary['kwargs'],
+            None if has_factory_method else dictionary['factory_method'],
+            [] if has_factory_args else dictionary['factory_args'],
+            {} if has_factory_kwargs else dictionary['factory_kwargs'],
+            False if has_static else dictionary['static'],
+            None if has_calls else dictionary['calls']
         )
 
     def add_instantiated_service(self, name, service):
@@ -81,20 +140,21 @@ class ServiceFactory(object):
         return self.instantiated_services
 
     def get_instantiated_service(self, name):
+        """ Get instantiated service by name """
         if name not in self.instantiated_services:
             raise UninstantiatedServiceException
         return self.instantiated_services[name]
 
-    def _replace_service_arg(self, index, args):
+    def _replace_service_arg(self, name, index, args):
         """ Replace index in list with service """
         args[index] = self.get_instantiated_service(name)
 
     def _replace_service_kwarg(self, key, kwarg):
         """ Replace key in dictionary with service """
-        kwarg[name] = self.get_instantiated_service(key)
+        kwarg[key] = self.get_instantiated_service(key)
 
     def _replace_scalars_in_args(self, args):
-        """ Replaces scalar names in args parameter """
+        """ Replace sacalrs in arguments list """
         new_args = []
         for arg in args:
             if isinstance(arg, basestring):
@@ -104,6 +164,7 @@ class ServiceFactory(object):
         return new_args
 
     def _replace_scalars_in_kwargs(self, kwargs):
+        """ Replace scalars in keyed arguments dictionary """
         for (name, value) in kwargs.iteritems():
             if isinstance(value, basestring):
                 # Parse Scalars
@@ -111,6 +172,7 @@ class ServiceFactory(object):
         return kwargs
 
     def _replace_services_in_args(self, args):
+        """ Replace service references in arguments list """
         new_args = []
         for arg in args:
             if isinstance(arg, basestring):
@@ -119,8 +181,8 @@ class ServiceFactory(object):
                 new_args.append(arg)
         return new_args
 
-
     def _replace_services_in_kwargs(self, kwargs):
+        """ Replace service references in keyed arguments dictionary """
         for (name, value) in kwargs.iteritems():
             if isinstance(value, basestring):
                 kwargs[name] = self._replace_service(value)
@@ -146,39 +208,18 @@ class ServiceFactory(object):
             return service
         return self.get_instantiated_service(service[1:])
 
-    def _verify_args(self, module_name, class_name, static):
-        """ Verifies a subset of the arguments to create() """
-        # Verify module name is provided
-        if module_name is None:
-            raise InvalidServiceConfiguration(
-                'Service configurations must define a module'
-            )
-
-        # Non-static services must define a class
-        if not static and class_name is None:
-            tmpl0 = 'Non-static service configurations must define a class: '
-            tmpl1 = 'module is %s'
-            raise InvalidServiceConfiguration((tmpl0 + tmpl1) % module_name)
-
-    def _import_module(self, module_name):
-        """ Imports the module dynamically """
-        fromlist = []
-        dot_position = module_name.rfind('.')
-        if dot_position > -1:
-            fromlist.append(
-                module_name[dot_position+1:len(module_name)]
-            )
-
-        # Import module
-        module = __import__(module_name, globals(), locals(), fromlist, -1)
-
-        return module
-
     def _instantiate(self, module, class_name,
-                     args=[], kwargs={}, static=False):
+                     args=None, kwargs=None, static=None):
         """ Instantiates a class if provided """
-        self._check_type('args', args, list)
-        self._check_type('kwargs', kwargs, dict)
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
+        if static is None:
+            static = False
+
+        _check_type('args', args, list)
+        _check_type('kwargs', kwargs, dict)
 
         if static and class_name is None:
             return module
@@ -186,7 +227,6 @@ class ServiceFactory(object):
         if static and class_name is not None:
             return getattr(module, class_name)
 
-        # pylint: disable=unused-variable
         service_obj = getattr(module, class_name)
 
         # Replace scalars
@@ -200,12 +240,16 @@ class ServiceFactory(object):
         # Instantiate object
         return service_obj(*new_args, **new_kwargs)
 
-    # pylint: disable=unused-argument
     def _handle_factory_method(self, service_obj, method_name,
-                               args=[], kwargs={}):
+                               args=None, kwargs=None):
         """" Returns an object returned from a factory method """
-        self._check_type('args', args, list)
-        self._check_type('kwargs', kwargs, dict)
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
+
+        _check_type('args', args, list)
+        _check_type('kwargs', kwargs, dict)
 
         # Replace args
         new_args = self._replace_scalars_in_args(args)
@@ -213,7 +257,6 @@ class ServiceFactory(object):
 
         return getattr(service_obj, method_name)(*new_args, **new_kwargs)
 
-    # pylint: disable=unused-argument
     def _handle_calls(self, service_obj, calls):
         """ Performs method calls on service object """
         for call in calls:
@@ -221,8 +264,8 @@ class ServiceFactory(object):
             args = call.get('args')
             kwargs = call.get('kwargs')
 
-            self._check_type('args', args, list)
-            self._check_type('kwargs', kwargs, dict)
+            _check_type('args', args, list)
+            _check_type('kwargs', kwargs, dict)
 
             if method is None:
                 raise InvalidServiceConfiguration(
@@ -232,10 +275,3 @@ class ServiceFactory(object):
             new_args = self._replace_scalars_in_args(args)
             new_kwargs = self._replace_scalars_in_kwargs(kwargs)
             getattr(service_obj, method)(*new_args, **new_kwargs)
-
-    def _check_type(self, name, obj, expected_type):
-        """ Raise a TypeError if object is not of expected type """
-        if not isinstance(obj, expected_type):
-            raise TypeError(
-                '"%s" must be an a %s' % (name, expected_type.__name__)
-            )

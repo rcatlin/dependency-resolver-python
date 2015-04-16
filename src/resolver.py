@@ -3,9 +3,11 @@ from services import ServiceFactory
 from tree import DependencyNode
 from tree import DependencyTree
 
+
 class CircularDependencyException(Exception):
     """ Raised when a circular dependency graph is detected """
-    def __init__(self, nodes, *args):
+    def __init__(self, nodes):
+        super(CircularDependencyException, self).__init__()
         self.node_path = '->'.join(nodes)
         self.message = "Circular Depedency Detected: %s" % self.node_path
 
@@ -17,7 +19,6 @@ def detect_circle(nodes):
         raise TypeError('"nodes" must be a dictionary')
 
     dependencies = set(nodes.keys())
-    levels = {}
     traveled = []
 
     heads = _detect_circle(nodes, dependencies, traveled)
@@ -25,18 +26,26 @@ def detect_circle(nodes):
     return DependencyTree(heads)
 
 
-def _detect_circle(nodes={}, dependencies=set(), traveled=[], path=[]):
+def _detect_circle(nodes=None, dependencies=None, traveled=None, path=None):
     """
         Recursively iterate over nodes checking
         if we've traveled to that node before.
     """
     # Verify nodes and traveled types
-    if not isinstance(nodes, dict):
+    if nodes is None:
+        nodes = {}
+    elif not isinstance(nodes, dict):
         raise TypeError('"nodes" must be a dictionary')
-    if not isinstance(dependencies, set):
+    if dependencies is None:
+        return
+    elif not isinstance(dependencies, set):
         raise TypeError('"dependencies" must be a set')
-    if not isinstance(traveled, list):
+    if traveled is None:
+        traveled = []
+    elif not isinstance(traveled, list):
         raise TypeError('"traveled" must be a list')
+    if path is None:
+        path = []
 
     if not dependencies:
         # We're at the end of a dependency path.
@@ -82,16 +91,18 @@ def solve(nodes):
 
 
 def is_dependency_name(name):
-        """ Returns true if of the form "@some_string" """
-        if not isinstance(name, str):
-            return False
-        return name[0:1] == '@'
+    """ Returns true if of the form "@some_string" """
+    if not isinstance(name, str):
+        return False
+    return name[0:1] == '@'
 
 
 class Resolver(object):
     """ Resolves dependency node graph and instantiates services """
-    def __init__(self, config, scalars={}):
+    def __init__(self, config, scalars=None):
         """ Initialize Resolver """
+        if scalars is None:
+            scalars = {}
         self._nodes = {}
         self._config = config
         self._factory = ServiceFactory(scalars)
@@ -102,6 +113,7 @@ class Resolver(object):
         """ Return nodes """
         return self._nodes
 
+    # pylint: disable=invalid-name
     def do(self):
         """ Instantiate Services """
         if not self._nodes:
@@ -152,7 +164,6 @@ class Resolver(object):
         if starting_num_nodes == len(nodes):
             raise Exception('No nodes removed!')
 
-
         # Remove newly instantiated services from dependency sets
         for (name, dependency_set) in nodes.iteritems():
             nodes[name] = dependency_set.difference(newly_instantiated)
@@ -195,7 +206,7 @@ class Resolver(object):
             raise TypeError('"kwargs" must be a dictionary')
 
         dependency_names = set()
-        for (key, arg) in args.iteritems():
+        for arg in args.values():
             new_names = self._check_arg(arg)
             dependency_names.update(new_names)
         return dependency_names

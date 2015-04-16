@@ -11,14 +11,17 @@ class DependencyNode(object):
 
     @property
     def parent(self):
+        """ Return parent node """
         return self._parent
 
     @parent.setter
     def parent(self, parent):
+        """ Set parent node """
         self._parent = parent
 
     @property
     def value(self):
+        """ Return value """
         return self._value
 
     @property
@@ -72,6 +75,7 @@ class DependencyTree(object):
 
     @property
     def head_values(self):
+        """ Return set of the head values """
         values = set()
         for head in self._heads:
             values.add(head.value)
@@ -93,66 +97,3 @@ class DependencyTree(object):
         if not isinstance(head, DependencyNode):
             raise TypeError('"head" must be a DependencyNode')
         self._heads.append(head)
-
-class DependencyTreeInstantiator(object):
-    def __init__(self, tree):
-        if not isinstance(tree, DependencyTree, constructors):
-            raise TypeError('"tree" must be a DependencyTree')
-        self._tree = tree
-        self._instantiated = {}
-        self._constructors = constructors
-        self._executed = False
-
-    @property
-    def instantiated(self):
-        if not self._executed:
-            self.traverse()
-        return self._instantiated
-
-    def traverse(self):
-        """ Traverse through tree heads and instantiate """
-        for head in tree.heads:
-            self._traverse(head)
-        self._executed = True
-
-    def _traverse(self, node):
-        """ Recursive traverse method """
-        name = node.value
-
-        if name in self._instantiated:
-            # Already instantiated
-            return
-
-        dependency_names = []
-        for child in node.children:
-            dependency_names.append(child.value)
-            self._traverse(child)
-
-        self._create_instance(name, dependency_names)
-
-    def _create_instance(self, name, dependency_names):
-        if name not in self._constructors:
-            raise Exception('Missing constructor for "%s"' % name)
-        constructor = self._constructors[name]
-
-        # Create mapping to pass to format
-        dependency_mapping = {}
-        for dep_name in dependency_names:
-            dependency_arg = 'self._instantiated["%s"]' % dep_name
-            dependency_mapping[dep_name] = dependency_arg
-
-        # new_instance = eval(
-        #   'module({aerospike}, {mailer})'.format(
-        #       aerospike=self._instantiated('aerospike')
-        #       mailer=self._instantiated('mailer')
-        #   )
-        # )
-        #
-        # Create new instance
-        new_instance = eval(
-            constructor.format(*dependency_mapping)
-        )
-
-        # Add instance to instantiated dictionary
-        self._instantiated[name] = new_instance
-        return
