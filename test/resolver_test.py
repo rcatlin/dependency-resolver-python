@@ -2,10 +2,12 @@
 import unittest
 import yaml
 
-from example_classes import Foo
 from example_classes import Bar
 from example_classes import Baz
+from example_classes import Foo
+from example_classes import Spam
 from example_classes import Qux
+from example_classes import Wobble
 from resolver import CircularDependencyException
 from resolver import detect_circle
 from resolver import _detect_circle
@@ -197,3 +199,15 @@ class ResolverTest(unittest.TestCase):
         assert isinstance(services['bar'], Bar)
         assert isinstance(services['baz'], Baz)
         assert isinstance(services['qux'], Qux)
+        assert isinstance(services['wobble'], Wobble)
+        assert isinstance(services['spam'], Spam)
+
+        spam = services['spam']
+        self.assertEquals(spam.ham, 'ham!')
+        self.assertEquals(spam.eggs, 'eggz')
+
+        wobble = services['wobble']
+        assert isinstance(wobble.foo, Foo)
+        assert isinstance(wobble.bar, Bar)
+        assert isinstance(wobble.baz, Baz)
+        assert isinstance(wobble.spam, Spam)
