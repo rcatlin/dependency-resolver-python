@@ -2,14 +2,13 @@
 import unittest
 
 from example_classes import Bar
-from example_classes import Factory
 from example_classes import Foo
 from example_classes import Spam
-from example_classes import Wibble
 from services import ServiceFactory
 
 
 class ServiceFactoryTest(unittest.TestCase):
+    """ Service Factory Unit Tests """
     def setUp(self):
         self._factory = ServiceFactory({
             'flib': 'FLIB',
@@ -28,7 +27,7 @@ class ServiceFactoryTest(unittest.TestCase):
             'example_classes',
             'Spam',
             kwargs={
-                'ham':'$flib',
+                'ham': '$flib',
                 'eggs': '$flub'
             }
         )
@@ -36,6 +35,7 @@ class ServiceFactoryTest(unittest.TestCase):
         self.assertEquals(result.ham, 'FLIB')
         self.assertEquals(result.eggs, 'FLUB')
 
+    # pylint: disable=invalid-name
     def test_factory_with_no_args_or_kwargs(self):
         """ Factory call with no args/kwargs """
         result = self._factory.create(
@@ -120,6 +120,8 @@ class ServiceFactoryTest(unittest.TestCase):
         self.assertEquals(result.value, 'wobble')
 
     def test_create_with_service(self):
+        """ Instantiate a Service with an existing Service defined """
+        # pylint: disable=blacklisted-name
         foo = Foo()
         self._factory.add_instantiated_service('foo', foo)
         result = self._factory.get_instantiated_service('foo')

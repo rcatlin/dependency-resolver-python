@@ -1,3 +1,5 @@
+# pylint: disable=missing-docstring, no-self-use
+# pylint: disable=too-few-public-methods, blacklisted-name
 
 
 class Foo(object):
@@ -95,4 +97,3 @@ class Wobble(object):
     @property
     def spam(self):
         return self._spam
-

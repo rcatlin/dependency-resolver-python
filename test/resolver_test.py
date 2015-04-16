@@ -11,24 +11,25 @@ from example_classes import Wobble
 from resolver import CircularDependencyException
 from resolver import detect_circle
 from resolver import _detect_circle
-from resolver import solve
 from resolver import is_dependency_name
 from resolver import Resolver
-from tree import DependencyNode
 from tree import DependencyTree
 
+
 def get_config_yaml():
+    """ Load test config YAML file """
     return yaml.load(open('test/test_config.yaml', 'r')) or {}
+
 
 class DetectCircleTest(unittest.TestCase):
     """ Unit Tests for detect_circle method """
-
+    # pylint: disable=no-self-use, invalid-name
     def test_detect_circle_raises_circular_exception(self):
         """
             Check that Circular Dependencies are
             detected and an exception is raised.
         """
-        with self.assertRaises(CircularDependencyException) as cm:
+        with self.assertRaises(CircularDependencyException) as context:
             graph = {
                 'a': set(['b']),
                 'b': set(['a'])
@@ -36,11 +37,11 @@ class DetectCircleTest(unittest.TestCase):
             detect_circle(graph)
 
         self.assertEquals(
-            cm.exception.node_path,
+            context.exception.node_path,
             'a->b->a'
         )
 
-        with self.assertRaises(CircularDependencyException) as cm:
+        with self.assertRaises(CircularDependencyException) as context:
             graph = {
                 'a': set(['b']),
                 'b': set(['c']),
@@ -49,10 +50,11 @@ class DetectCircleTest(unittest.TestCase):
             detect_circle(graph)
 
         self.assertEquals(
-            cm.exception.node_path,
+            context.exception.node_path,
             'a->b->c->a'
         )
 
+    # pylint: disable=invalid-name
     def test_detect_circle_raises_type_exception(self):
         """
             Check that invalid argument types are
@@ -91,7 +93,9 @@ class DetectCircleTest(unittest.TestCase):
                 'not_a_list'
             )
 
+    # pylint: disable=no-self-use
     def test_detect_circle_2(self):
+        """ Test another Circular Dependency Case """
         graph = {
             'a': set(['b']),
             'b': set(['c', 'd']),
@@ -130,13 +134,18 @@ class DetectCircleTest(unittest.TestCase):
 
 
 class DependencyNameTest(unittest.TestCase):
+    """ Is dependency method Unit Tests """
+    # pylint: disable=no-self-use
     def test_names(self):
+        """ Assert correct service string values are detected """
         assert is_dependency_name('@foo')
         assert not is_dependency_name('foo')
 
 
 class ResolverTest(unittest.TestCase):
+    """ Resolver class Unit Tests """
     def test_init_nodes(self):
+        """ Simple init nodes test """
         config = {
             'foo': {
                 'module': 'example_classes',
@@ -148,7 +157,9 @@ class ResolverTest(unittest.TestCase):
         nodes = resolver.nodes
         self.assertEquals(nodes['foo'], set())
 
+    # pylint: disable=invalid-name
     def test_init_nodes_with_a_dependency(self):
+        """ Init nodes with a dependency """
         config = {
             'foo': {
                 'module': 'example_classes',
@@ -167,6 +178,7 @@ class ResolverTest(unittest.TestCase):
         self.assertEquals(nodes['bar'], set(['foo']))
 
     def test_init_nodes_complicated(self):
+        """ Initialize nodes with advanced config YAML file """
         config = yaml.load(open('test/test_config.yml', 'r')) or {}
         resolver = Resolver(config)
 
@@ -177,6 +189,7 @@ class ResolverTest(unittest.TestCase):
         self.assertEquals(nodes['qux'], set(['foo', 'bar', 'baz']))
 
     def test_do_simple(self):
+        """ Simple config resolution """
         resolver = Resolver({
             'foo': {
                 'module': 'example_classes',
@@ -186,10 +199,11 @@ class ResolverTest(unittest.TestCase):
 
         services = resolver.do()
 
-        assert 'foo' in services
+        self.assertTrue('foo' in services)
         assert isinstance(services['foo'], Foo)
 
     def test_do_complicated(self):
+        """ Instantiate services from advanced YAML file """
         config = yaml.load(open('test/test_config.yml', 'r')) or {}
         resolver = Resolver(config)
 
