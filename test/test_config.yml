@@ -1,0 +1,21 @@
+qux:
+    module: example_classes
+    class: Qux
+    args:
+        - "@foo"
+        - "@bar"
+        - "@baz"
+
+bar:
+    module: example_classes
+    class: Bar
+    args:
+        - "@foo"
+
+foo:
+    module: example_classes
+    class: Foo
+
+baz:
+    module: example_classes
+    class: Baz
