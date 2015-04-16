@@ -219,5 +219,5 @@ class Resolver(object):
             return self._get_dependencies_from_kwargs(arg)
 
         if not is_dependency_name(arg):
-            return
+            return set()
         return set([arg[1:]])
