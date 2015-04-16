@@ -5,14 +5,30 @@ class InvalidServiceConfiguration(Exception):
     """Raised when a service configuration is Invalid"""
 
 
+class UninstantiatedServiceException(Exception):
+    """
+        Raised when a service dependency fullfillment
+        is attempted before it has been instantiated.
+    """
+
+
+def is_arg_scalar(arg):
+    """ Returns true if arg starts with a dollar sign """
+    return arg[:1] == '$'
+
+
+def is_arg_service(arg):
+    """ Returns true if arg starts with an at symbol """
+    return arg[:1] == '@'
+
+
 class ServiceFactory(object):
     """
         Class ServiceFactory handles the dynamic creation of service objects
     """
-    scalars = {}
-
-    def __init__(self, scalars):
+    def __init__(self, scalars={}):
         self.scalars = scalars
+        self.instantiated_services = {}
 
     # pylint: disable=eval-used, too-many-locals, too-many-arguments
     def create(self, module_name, class_name,
@@ -42,32 +58,59 @@ class ServiceFactory(object):
         # Return
         return service_obj
 
-    def replace_scalars_in_args(self, args):
+    def add_instantiated_service(self, name, service):
+        """ Add an instatiated service by name """
+        self.instantiated_services[name] = service
+
+    def get_instantiated_services(self):
+        """ Get instantiated services """
+        return self.instantiated_services
+
+    def get_instantiated_service(self, name):
+        if name not in self.instantiated_services:
+            raise UninstantiatedServiceException
+        return self.instantiated_services[name]
+
+    def _replace_service_arg(self, index, args):
+        """ Replace index in list with service """
+        args[index] = self.get_instantiated_service(name)
+
+    def _replace_service_kwarg(self, key, kwarg):
+        """ Replace key in dictionary with service """
+        kwarg[name] = self.get_instantiated_service(key)
+
+    def _replace_scalars_in_args(self, args):
         """ Replaces scalar names in args parameter """
         new_args = []
         for arg in args:
             if isinstance(arg, basestring):
-                new_args.append(self.replace_scalar(arg))
+                new_args.append(self._replace_scalar(arg))
             else:
                 new_args.append(arg)
         return new_args
 
-    def replace_scalars_in_kwargs(self, kwargs):
-        for name, value in kwargs.iteritems():
+    def _replace_scalars_in_kwargs(self, kwargs):
+        for (name, value) in kwargs.iteritems():
             if isinstance(value, basestring):
                 # Parse Scalars
-                kwargs[name] = self.replace_scalar(value)
+                kwargs[name] = self._replace_scalar(value)
         return kwargs
 
-    # pylint: disable=no-self-use
-    def is_param_scalar(self, scalar):
-        """ Returns true if scalar starts with a dollar sign """
-        return scalar[:1] == '$'
+    def _replace_services_in_args(self, args):
+        new_args = []
+        for arg in args:
+            if isinstance(arg, basestring):
+                new_args.append(self._replace_service(arg))
+            else:
+                new_args.append(arg)
+        return new_args
 
-    # pylint: disable=no-self-use
-    def get_scalar_param_name(self, scalar):
-        """ Returns characters after the dollar sign """
-        return scalar[1:]
+
+    def _replace_services_in_kwargs(self, kwargs):
+        for (name, value) in kwargs.iteritems():
+            if isinstance(value, basestring):
+                kwargs[name] = self._replace_service(value)
+        return kwargs
 
     def get_scalar_value(self, name):
         """ Get scalar value by name """
@@ -77,12 +120,17 @@ class ServiceFactory(object):
             )
         return self.scalars.get(name)
 
-    def replace_scalar(self, scalar):
+    def _replace_scalar(self, scalar):
         """ Replace scalar name with scalar value """
-        if not self.is_param_scalar(scalar):
+        if not is_arg_scalar(scalar):
             return scalar
-        param_name = self.get_scalar_param_name(scalar)
-        return self.get_scalar_value(param_name)
+        return self.get_scalar_value(scalar[1:])
+
+    def _replace_service(self, service):
+        """ Replace service name with service instance """
+        if not is_arg_service(service):
+            return service
+        return self.get_instantiated_service(service[1:])
 
     def _verify_args(self, module_name, class_name, static):
         """ Verifies a subset of the arguments to create() """
@@ -117,6 +165,7 @@ class ServiceFactory(object):
         """ Instantiates a class if provided """
         self._check_type('args', args, list)
         self._check_type('kwargs', kwargs, dict)
+
         if static and class_name is None:
             return module
 
@@ -126,9 +175,15 @@ class ServiceFactory(object):
         # pylint: disable=unused-variable
         service_obj = getattr(module, class_name)
 
+        # Replace scalars
+        new_args = self._replace_scalars_in_args(args)
+        new_kwargs = self._replace_scalars_in_kwargs(kwargs)
+
+        # Replace service references
+        new_args = self._replace_services_in_args(args)
+        new_kwargs = self._replace_services_in_kwargs(kwargs)
+
         # Instantiate object
-        new_args = self.replace_scalars_in_args(args)
-        new_kwargs = self.replace_scalars_in_kwargs(kwargs)
         return service_obj(*new_args, **new_kwargs)
 
     # pylint: disable=unused-argument
@@ -139,8 +194,8 @@ class ServiceFactory(object):
         self._check_type('kwargs', kwargs, dict)
 
         # Replace args
-        new_args = self.replace_scalars_in_args(args)
-        new_kwargs = self.replace_scalars_in_kwargs(kwargs)
+        new_args = self._replace_scalars_in_args(args)
+        new_kwargs = self._replace_scalars_in_kwargs(kwargs)
 
         return getattr(service_obj, method_name)(*new_args, **new_kwargs)
 
@@ -160,8 +215,8 @@ class ServiceFactory(object):
                     'Service call must define a method.'
                 )
 
-            new_args = self.replace_scalars_in_args(args)
-            new_kwargs = self.replace_scalars_in_kwargs(kwargs)
+            new_args = self._replace_scalars_in_args(args)
+            new_kwargs = self._replace_scalars_in_kwargs(kwargs)
             getattr(service_obj, method)(*new_args, **new_kwargs)
 
     def _check_type(self, name, obj, expected_type):

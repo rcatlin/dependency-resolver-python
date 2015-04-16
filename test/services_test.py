@@ -1,6 +1,7 @@
 """ Services Module Unit Tests"""
 import unittest
 
+from example_classes import Bar
 from example_classes import Factory
 from example_classes import Foo
 from example_classes import Spam
@@ -117,3 +118,17 @@ class ServiceFactoryTest(unittest.TestCase):
             True
         )
         self.assertEquals(result.value, 'wobble')
+
+    def test_create_with_service(self):
+        foo = Foo()
+        self._factory.add_instantiated_service('foo', foo)
+        result = self._factory.get_instantiated_service('foo')
+        assert isinstance(result, Foo)
+
+        result = self._factory.create(
+            'example_classes',
+            'Bar',
+            ['@foo']
+        )
+
+        assert isinstance(result, Bar)
