@@ -259,10 +259,11 @@ class ServiceFactory(object):
 
     def _handle_calls(self, service_obj, calls):
         """ Performs method calls on service object """
+
         for call in calls:
             method = call.get('method')
-            args = call.get('args')
-            kwargs = call.get('kwargs')
+            args = call.get('args', [])
+            kwargs = call.get('kwargs', {})
 
             _check_type('args', args, list)
             _check_type('kwargs', kwargs, dict)
