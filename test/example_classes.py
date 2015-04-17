@@ -97,3 +97,11 @@ class Wobble(object):
     @property
     def spam(self):
         return self._spam
+
+class Weeble(object):
+    def __init__(self, config):
+        self._config = config
+
+    def find(self, key):
+        return self._config[key]
+

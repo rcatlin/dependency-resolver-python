@@ -157,25 +157,40 @@ class ServiceFactory(object):
         """ Replace sacalrs in arguments list """
         new_args = []
         for arg in args:
-            if isinstance(arg, basestring):
-                new_args.append(self._replace_scalar(arg))
+            if isinstance(arg, list):
+                to_append = self._replace_scalars_in_args(arg)
+            elif isinstance(arg, dict):
+                to_append = self._replace_scalars_in_kwargs(arg)
+            elif isinstance(arg, basestring):
+                to_append = self._replace_scalar(arg)
             else:
-                new_args.append(arg)
+                to_append = arg
+            new_args.append(to_append)
         return new_args
 
     def _replace_scalars_in_kwargs(self, kwargs):
         """ Replace scalars in keyed arguments dictionary """
+        new_kwargs = {}
         for (name, value) in kwargs.iteritems():
-            if isinstance(value, basestring):
-                # Parse Scalars
-                kwargs[name] = self._replace_scalar(value)
-        return kwargs
+            if isinstance(value, list):
+                new_kwargs[name] = self._replace_scalars_in_args(value)
+            elif isinstance(value, dict):
+                new_kwargs[name] = self._replace_scalars_in_kwargs(value)
+            elif isinstance(value, basestring):
+                new_kwargs[name] = self._replace_scalar(value)
+            else:
+                new_kwargs[name] = value
+        return new_kwargs
 
     def _replace_services_in_args(self, args):
         """ Replace service references in arguments list """
         new_args = []
         for arg in args:
-            if isinstance(arg, basestring):
+            if isinstance(arg, list):
+                new_args.append(self._replace_services_in_args(arg))
+            elif isinstance(arg, dict):
+                new_args.append(self._replace_services_in_kwargs(arg))
+            elif isinstance(arg, basestring):
                 new_args.append(self._replace_service(arg))
             else:
                 new_args.append(arg)
@@ -183,10 +198,15 @@ class ServiceFactory(object):
 
     def _replace_services_in_kwargs(self, kwargs):
         """ Replace service references in keyed arguments dictionary """
+        new_kwargs = {}
         for (name, value) in kwargs.iteritems():
-            if isinstance(value, basestring):
-                kwargs[name] = self._replace_service(value)
-        return kwargs
+            if isinstance(value, list):
+                new_kwargs[name] = self._replace_services_in_args(value)
+            elif isinstance(value, dict):
+                new_kwargs[name] = self._replace_services_in_kwargs(value)
+            elif isinstance(value, basestring):
+                new_kwargs[name] = self._replace_service(value)
+        return new_kwargs
 
     def get_scalar_value(self, name):
         """ Get scalar value by name """
@@ -194,13 +214,15 @@ class ServiceFactory(object):
             raise InvalidServiceConfiguration(
                 'Invalid Service Argument Scalar "%s" (not found)' % name
             )
-        return self.scalars.get(name)
+        new_value = self.scalars.get(name)
+        return new_value
 
     def _replace_scalar(self, scalar):
         """ Replace scalar name with scalar value """
         if not is_arg_scalar(scalar):
             return scalar
-        return self.get_scalar_value(scalar[1:])
+        name = scalar[1:]
+        return self.get_scalar_value(name)
 
     def _replace_service(self, service):
         """ Replace service name with service instance """
@@ -230,15 +252,15 @@ class ServiceFactory(object):
         service_obj = getattr(module, class_name)
 
         # Replace scalars
-        new_args = self._replace_scalars_in_args(args)
-        new_kwargs = self._replace_scalars_in_kwargs(kwargs)
+        args = self._replace_scalars_in_args(args)
+        kwargs = self._replace_scalars_in_kwargs(kwargs)
 
         # Replace service references
-        new_args = self._replace_services_in_args(args)
-        new_kwargs = self._replace_services_in_kwargs(kwargs)
+        args = self._replace_services_in_args(args)
+        kwargs = self._replace_services_in_kwargs(kwargs)
 
         # Instantiate object
-        return service_obj(*new_args, **new_kwargs)
+        return service_obj(*args, **kwargs)
 
     def _handle_factory_method(self, service_obj, method_name,
                                args=None, kwargs=None):

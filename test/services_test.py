@@ -4,6 +4,7 @@ import unittest
 from example_classes import Bar
 from example_classes import Foo
 from example_classes import Spam
+from example_classes import Weeble
 from services import ServiceFactory
 
 
@@ -16,6 +17,76 @@ class ServiceFactoryTest(unittest.TestCase):
             'new_ham': 'new ham',
             'new_eggs': 'new eggs'
         })
+
+    def test_replace_services(self):
+        foo = Foo()
+        self._factory.add_instantiated_service('foo', foo)
+
+        self.assertEquals(
+            [foo],
+            self._factory._replace_services_in_args(['@foo'])
+        )
+        self.assertEquals(
+            [[foo]],
+            self._factory._replace_services_in_args([['@foo']])
+        )
+        self.assertEquals(
+            ['bar', {'foo': foo}],
+            self._factory._replace_services_in_args(['bar', {'foo': '@foo'}])
+        )
+        self.assertEquals(
+            [('bar', 'baz'), {'foo': foo}],
+            self._factory._replace_services_in_args([('bar', 'baz'), {'foo':'@foo'}])
+        )
+        self.assertEquals(
+            {'foo': foo},
+            self._factory._replace_services_in_kwargs({'foo': '@foo'})
+        )
+        self.assertEquals(
+            {'config': {'foo': foo}},
+            self._factory._replace_services_in_kwargs({'config': {'foo': '@foo'}})
+        )
+        self.assertEquals(
+            {'bar': {'baz': [foo]}},
+            self._factory._replace_services_in_kwargs({'bar': {'baz': ['@foo']}})
+        )
+
+    def test_replace_scalars(self):
+        self.assertEquals(
+            ['FLIB'],
+            self._factory._replace_scalars_in_args(['$flib'])
+        )
+        self.assertEquals(
+            [['FLIB']],
+            self._factory._replace_scalars_in_args([['$flib']])
+        )
+        self.assertEquals(
+            ['bar', {'foo': 'FLIB'}],
+            self._factory._replace_scalars_in_args(['bar', {'foo': '$flib'}])
+        )
+        self.assertEquals(
+            [('bar', 'baz'), {'foo': 'FLIB'}],
+            self._factory._replace_scalars_in_args([('bar', 'baz'), {'foo':'$flib'}])
+        )
+        self.assertEquals(
+            {'foo': 'FLIB'},
+            self._factory._replace_scalars_in_kwargs({'foo': '$flib'})
+        )
+        self.assertEquals(
+            {'flib': 'FLIB', 'flub': 'FLUB'},
+            self._factory._replace_scalars_in_kwargs({
+                'flib': '$flib',
+                'flub': '$flub'
+            })
+        )
+        self.assertEquals(
+            {'config': {'foo': 'FLIB'}},
+            self._factory._replace_scalars_in_kwargs({'config': {'foo': '$flib'}})
+        )
+        self.assertEquals(
+            {'bar': {'baz': ['FLIB']}},
+            self._factory._replace_scalars_in_kwargs({'bar': {'baz': ['$flib']}})
+        )
 
     def test_create(self):
         """ Simple Factory call with scalars """
@@ -134,3 +205,23 @@ class ServiceFactoryTest(unittest.TestCase):
         )
 
         assert isinstance(result, Bar)
+
+    @unittest.skip('foo')
+    def test_create_with_nested_scalars(self):
+        """ Instantate a Service with nested scalar """
+        config = {
+            'foo': {
+                'bar': {
+                    '$flib'
+                },
+                'baz': ['$flub']
+            }
+        }
+        result = self._factory.create(
+            'example_classes',
+            'Weeble',
+            [config]
+        )
+
+        assert isinstance(result, Weeble)
+        self.assertEquals(result.find('foo'), {'bar': {'FLIB'}, 'baz': ['FLUB']})
