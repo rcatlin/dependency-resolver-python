@@ -50,6 +50,15 @@ class ServiceFactoryTest(unittest.TestCase):
             {'bar': {'baz': [foo]}},
             self._factory._replace_services_in_kwargs({'bar': {'baz': ['@foo']}})
         )
+        # No replacement
+        self.assertEquals(
+            [{'foo': 1000}],
+            self._factory._replace_services_in_args([{'foo': 1000}])
+        )
+        self.assertEquals(
+            {'foo': 1000},
+            self._factory._replace_services_in_kwargs({'foo': 1000})
+        )
 
     def test_replace_scalars(self):
         self.assertEquals(
@@ -206,14 +215,11 @@ class ServiceFactoryTest(unittest.TestCase):
 
         assert isinstance(result, Bar)
 
-    @unittest.skip('foo')
     def test_create_with_nested_scalars(self):
         """ Instantate a Service with nested scalar """
         config = {
             'foo': {
-                'bar': {
-                    '$flib'
-                },
+                'bar': {'flib': '$flib'},
                 'baz': ['$flub']
             }
         }
@@ -224,4 +230,10 @@ class ServiceFactoryTest(unittest.TestCase):
         )
 
         assert isinstance(result, Weeble)
-        self.assertEquals(result.find('foo'), {'bar': {'FLIB'}, 'baz': ['FLUB']})
+        self.assertEquals(
+            result.find('foo'),
+            {
+                'bar': {'flib': 'FLIB'},
+                'baz': ['FLUB']
+            }
+        )

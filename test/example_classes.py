@@ -98,10 +98,20 @@ class Wobble(object):
     def spam(self):
         return self._spam
 
+
 class Weeble(object):
     def __init__(self, config):
         self._config = config
 
     def find(self, key):
         return self._config[key]
+
+
+class TestLogger(object):
+    def __init__(self, *arg, **kwargs):
+        self._config = arg[0]
+
+    @property
+    def config(self):
+        return self._config
 

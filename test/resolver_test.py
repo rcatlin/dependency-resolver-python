@@ -8,6 +8,7 @@ from example_classes import Foo
 from example_classes import Spam
 from example_classes import Qux
 from example_classes import Wobble
+from example_classes import TestLogger
 from resolver import CircularDependencyException
 from resolver import detect_circle
 from resolver import _detect_circle
@@ -201,6 +202,53 @@ class ResolverTest(unittest.TestCase):
 
         self.assertTrue('foo' in services)
         assert isinstance(services['foo'], Foo)
+
+    def test_advanced(self):
+        # datalogger:
+        #     module: datalogger
+        #     class: DataLogger
+        #     args:
+        #         -
+        #             name: rob_logger
+        #             path: /var/log/monorail
+        #             file_base_name: rob
+        #             max_file_bytes: 1073741824
+        #             backup_count: 10
+        #             port: $_port
+        config = {
+            'logger': {
+                'module': 'example_classes',
+                'class': 'TestLogger',
+                'args': [
+                    {
+                        'name': 'test_logger',
+                        'path': '/var/foo',
+                        'file_base_name': 'testlog',
+                        'max_file_bytes': 500,
+                        'backup_count': 10,
+                        'port': '$_port'
+                    }
+                ]
+            }
+        }
+        scalars = {'_port': 555}
+        resolver = Resolver(config, scalars)
+
+        services = resolver.do()
+        logger = services['logger']
+
+        assert isinstance(logger, TestLogger)
+        self.assertEquals(
+            {
+                'name': 'test_logger',
+                'path': '/var/foo',
+                'file_base_name': 'testlog',
+                'max_file_bytes': 500,
+                'backup_count': 10,
+                'port': 555
+            },
+            logger.config
+        )
 
     def test_do_complicated(self):
         """ Instantiate services from advanced YAML file """
