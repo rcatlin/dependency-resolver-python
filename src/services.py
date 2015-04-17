@@ -112,23 +112,23 @@ class ServiceFactory(object):
 
     def create_from_dict(self, dictionary):
         """ Initializes an instance from a dictionary blueprint """
-        has_args = 'args' not in dictionary
-        has_kwargs = 'kwargs' not in dictionary
-        has_factory_method = 'factory_method' not in dictionary
-        has_factory_args = 'factory_args' not in dictionary
-        has_factory_kwargs = 'factory_kwargs' not in dictionary
-        has_static = 'static' not in dictionary
-        has_calls = 'calls' not in dictionary
+        has_args = 'args' in dictionary
+        has_kwargs = 'kwargs' in dictionary
+        has_factory_method = 'factory-method' in dictionary
+        has_factory_args = 'factory-args' in dictionary
+        has_factory_kwargs = 'factory-kwargs' in dictionary
+        has_static = 'static' in dictionary
+        has_calls = 'calls' in dictionary
         return self.create(
             dictionary['module'],
             dictionary['class'],
-            [] if has_args else dictionary['args'],
-            {} if has_kwargs else dictionary['kwargs'],
-            None if has_factory_method else dictionary['factory_method'],
-            [] if has_factory_args else dictionary['factory_args'],
-            {} if has_factory_kwargs else dictionary['factory_kwargs'],
-            False if has_static else dictionary['static'],
-            None if has_calls else dictionary['calls']
+            [] if not has_args else dictionary['args'],
+            {} if not has_kwargs else dictionary['kwargs'],
+            None if not has_factory_method else dictionary['factory-method'],
+            [] if not has_factory_args else dictionary['factory-args'],
+            {} if not has_factory_kwargs else dictionary['factory-kwargs'],
+            False if not has_static else dictionary['static'],
+            None if not has_calls else dictionary['calls']
         )
 
     def add_instantiated_service(self, name, service):
